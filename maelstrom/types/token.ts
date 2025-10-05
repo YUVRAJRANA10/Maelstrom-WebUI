@@ -4,7 +4,6 @@ export interface Token{
   address: Address
   symbol: string
   name: string
-  icon: string
   decimals: number
 }
 

@@ -1,4 +1,4 @@
-import { LiquidityPoolToken, Token } from "@/lib/mock-api"
+import { LiquidityPoolToken, Token } from "./token"
 
 export interface Pool {
   token: Token
@@ -13,6 +13,28 @@ export interface Pool {
   apr: number
   lastExchangeTs: number 
   lastUpdated: number
+}
+
+export interface RowPool{
+  token: Token,
+  buyPrice: string,
+  sellPrice: string,
+  totalLiquidity: string
+}
+
+export interface InitPool{
+  token: string
+  ethAmount: string
+  tokenAmount: string
+  inititalBuyPrice: string
+  initialSellPrice: string
+}
+
+export interface InitPoolResult{
+  success: boolean
+  txHash: string
+  timestamp: number
+  error?: string
 }
 
 export interface Reserve {

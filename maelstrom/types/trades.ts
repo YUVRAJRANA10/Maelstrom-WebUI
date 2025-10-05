@@ -1,16 +1,16 @@
-import { Token } from "./token"
+import { LiquidityPoolToken, Token } from "./token"
 
 export interface BuyTrade{
   token: Token
   buyPrice: string
-  imapct: string  //10% for say
+  ethAmount: string
   timestamp: number
 }
 
 export interface SellTrade{
   token: Token
   sellPrice: string
-  impact: string
+  ethAmount: string
   timestamp: number
 }
 
@@ -44,6 +44,7 @@ export interface SwapRequest{
   tokenIn: Token,
   tokenOut: Token,
   amountIn: string,
+  minimumTokenOut: string
 }
 
 export interface SellRequest{
@@ -64,6 +65,7 @@ export interface DepositRequest{
 
 export interface WithdrawRequest{
   token: Token,
+  lpToken: LiquidityPoolToken,
   lpTokenAmount: string
 }
 
@@ -71,9 +73,7 @@ export interface SwapResult{
   success: boolean
   txHash: string
   swapRequest: SwapRequest
-  amountOut: string
   timestamp: number
-  fee: string
   error?: string
 }
 
@@ -83,7 +83,6 @@ export interface SellResult{
   sellRequest: SellRequest
   amountOut: string
   timestamp: number
-  fee: string
   error?: string
 }
 
@@ -93,7 +92,6 @@ export interface BuyResult{
   buyRequest: BuyRequest
   amountOut: string
   timestamp: number
-  fee: string
   error?: string
 }
 
@@ -101,7 +99,6 @@ export interface DepositResult{
   success: boolean
   txHash: string
   depositRequest: DepositRequest
-  lpTokensMinted: string
   timestamp: number
   error?: string
 }
@@ -110,8 +107,6 @@ export interface WithdrawResult{
   success: boolean
   txHash: string
   withdrawRequest: WithdrawRequest
-  tokenAmount: string
-  ethAmount: string
   timestamp: number
   error?: string
 }
