@@ -49,7 +49,7 @@ export function BuyForm() {
     } finally {
       setIsFetchingRates(false);
     }
-  }
+  };
 
   const handleInputChange = async (value: string) => {
     if (!token) return;
@@ -59,7 +59,7 @@ export function BuyForm() {
       setEthAmount(ethValue.toFixed(6));
     } else {
       setEthAmount(value);
-      if(buyPrice === BigInt(0)) {
+      if (buyPrice === BigInt(0)) {
         await handleTokenChange(token);
       }
       console.log(buyPrice);
@@ -130,6 +130,7 @@ export function BuyForm() {
             type="text"
             inputMode="decimal"
             placeholder="0"
+            disabled={!token && isSwapping && isFetchingRates}
             value={isEthInput ? ethAmount : tokenAmount}
             onChange={(e) => handleInputChange(e.target.value)}
             className="w-full bg-transparent text-4xl font-medium outline-none placeholder:text-white/20 
@@ -172,6 +173,7 @@ export function BuyForm() {
             inputMode="decimal"
             placeholder="0"
             value={isEthInput ? tokenAmount : ethAmount}
+            disabled={!token && isSwapping && isFetchingRates}
             readOnly
             className="w-full bg-transparent text-4xl font-medium outline-none placeholder:text-white/20 
                 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none
