@@ -1,0 +1,229 @@
+"use client";
+
+import { DashboardOverview } from "@/components/dashboard/dashboard-overview";
+import { PoolsTable } from "@/components/dashboard/pools-table";
+import { RecentActivity } from "@/components/dashboard/recent-activity";
+import { DashboardSkeleton } from "@/components/dashboard/dashboard-skeleton";
+import { useAccount, usePublicClient, useWriteContract } from "wagmi";
+import { ContractClient } from "@/lib/contract-client";
+import { CONTRACT_ADDRESS } from "@/types/contract";
+import { useEffect, useState } from "react";
+import { RowPool } from "@/types/pool";
+import { toast } from "sonner";
+import { formatEther } from "viem";
+import { Deposit, Withdraw } from "@/types/trades";
+
+export default function DashboardPage() {
+  const { writeContractAsync } = useWriteContract();
+  const publicClient = usePublicClient();
+  const contractClient = new ContractClient(
+    CONTRACT_ADDRESS,
+    writeContractAsync,
+    publicClient
+  );
+  const { address } = useAccount();
+  const [totalPools, setTotalPools] = useState<number>(0);
+  const [totalLiquidity, setTotalLiquidity] = useState<string>("0");
+  const [portfolioValue, setPortfolioValue] = useState<string>("0");
+  const [totalProfit, setTotalProfit] = useState<string>("0");
+  const [events, setEvents] = useState<(Deposit | Withdraw)[]>([]);
+  const [pools, setPools] = useState<RowPool[]>([]);
+  const [isLoading, setIsLoading] = useState<boolean>(true);
+  const POOL_FETCH_LIMIT = 5;
+
+  const fetchPoolCount = async () => {
+    if (!address) return;
+    try {
+      const count = await contractClient.getUserPoolCount(address!);
+      setTotalPools(count);
+      return count;
+    } catch (error) {
+      console.error("Error fetching pool count:", error);
+      toast.error("Failed to fetch pool count.");
+    }
+  };
+
+  const fetchUserPools = async (poolCount: number) => {
+    if (!address) return;
+    if (poolCount === 0) return;
+    try {
+      const allPools: RowPool[] = [];
+      for (let i = 0; i < Math.ceil(poolCount / POOL_FETCH_LIMIT); i++) {
+        const userPools = await contractClient.getUserPools(
+          address,
+          i * POOL_FETCH_LIMIT,
+          Math.min(i * POOL_FETCH_LIMIT + POOL_FETCH_LIMIT, poolCount - 1)
+        );
+        allPools.push(...userPools);
+      }
+      setPools(allPools);
+    } catch (error) {
+      console.error("Error fetching user pools:", error);
+      toast.error("Failed to fetch user pools.");
+    }
+  };
+
+  const fetchRecentDeposits = async () => {
+    if (!address) return;
+    try {
+      const currentBlock = await publicClient?.getBlock();
+      if (!currentBlock) return;
+      const deposits = await contractClient.getDepositEventLogs(
+        Number(currentBlock.number) - 1000,
+        Number(currentBlock.number),
+        undefined,
+        address
+      );
+      setEvents(deposits);
+    } catch (error) {
+      console.error("Error fetching recent deposits:", error);
+      toast.error("Failed to fetch recent deposits.");
+    }
+  };
+
+  const fetchRecentWithdrawals = async () => {
+    if (!address) return;
+    try {
+      const currentBlock = await publicClient?.getBlock();
+      if (!currentBlock) return;
+      const withdrawals = await contractClient.getWithdrawEventLogs(
+        Number(currentBlock.number) - 1000,
+        Number(currentBlock.number),
+        undefined,
+        address
+      );
+      setEvents((prevEvents) => [...prevEvents, ...withdrawals]);
+    } catch (error) {
+      console.error("Error fetching recent withdrawals:", error);
+      toast.error("Failed to fetch recent withdrawals.");
+    }
+  };
+
+
+
+  const calculatePortfolioValue = (poolsData: RowPool[]) => {
+    let total = 0;
+    for (const pool of poolsData) {
+      const proportion =
+        Number(pool.lpToken!.balance) / Number(pool.lpToken!.totalSupply);
+      total += Number(proportion) * Number(pool.totalLiquidity);
+    }
+    return formatEther(BigInt(total));
+  };
+
+  const calculateProfit = (portfolio: string, liquidity: string) => {
+    const portfolioNum = Number(portfolio);
+    const liquidityNum = Number(liquidity);
+    if (liquidityNum === 0) return "0.00";
+    const gain = ((portfolioNum - liquidityNum) / liquidityNum) * 100;
+    return gain.toFixed(2);
+  };
+
+  useEffect(() => {
+    if (!address) return;
+
+    const fetchData = async () => {
+      try {
+        setIsLoading(true);
+        
+        // Fetch all data
+        const count = await fetchPoolCount();
+        if (count === undefined) throw new Error("Pool count is undefined");
+        
+        await fetchUserPools(count);
+        const liquidity = await contractClient.getUserLiquidity(address);
+        const liquidityFormatted = formatEther(BigInt(liquidity));
+        setTotalLiquidity(liquidityFormatted);
+        
+        await fetchRecentDeposits();
+        await fetchRecentWithdrawals();
+        
+      } catch (error) {
+        console.error("Error fetching dashboard data:", error);
+        toast.error("Failed to fetch dashboard data.");
+      } finally {
+        setIsLoading(false);
+      }
+    };
+
+    fetchData();
+  }, [address]);
+
+  // Separate effect to calculate values when pools or liquidity changes
+  useEffect(() => {
+    if (pools.length > 0 && totalLiquidity !== "0") {
+      const portfolio = calculatePortfolioValue(pools);
+      setPortfolioValue(portfolio);
+      const profit = calculateProfit(portfolio, totalLiquidity);
+      setTotalProfit(profit);
+    }
+  }, [pools, totalLiquidity]);
+
+  if (isLoading) {
+    return <DashboardSkeleton />;
+  }
+
+  return (
+    <div className="min-h-screen relative bg-gradient-pattern overflow-hidden">
+      <main className="container relative mx-auto px-4 py-8">
+        <div className="space-y-8">
+          {/* Page Header with glass effect */}
+          <div className="relative rounded-xl p-8 overflow-hidden backdrop-blur-xl border border-white/[0.05]">
+            <div className="absolute inset-0 bg-gradient-to-br from-accent/[0.08] to-primary-500/[0.05]" />
+            <div className="absolute inset-0 border border-white/[0.05] rounded-xl" />
+            <div className="relative">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+                <div>
+                  <h1 className="text-3xl md:text-4xl font-bold font-clash-display text-transparent bg-clip-text bg-gradient-to-r from-white to-white/70">
+                    Dashboard Overview
+                  </h1>
+                  <p className="text-muted-foreground/70 mt-2 max-w-[600px] font-plus-jakarta">
+                    Monitor your positions, track performance, and manage your
+                    DeFi portfolio.
+                  </p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Overview Cards */}
+          <DashboardOverview
+            portfolioValue={portfolioValue}
+            totalLiquidity={totalLiquidity}
+            profit={totalProfit}
+            activePools={totalPools.toString()}
+            loading={isLoading}
+          />
+
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
+            {/* Left Column - Portfolio & Pools */}
+            <div className="lg:col-span-2 space-y-8">
+              <div className="relative rounded-xl overflow-hidden backdrop-blur-xl border border-white/[0.05]">
+                <div className="absolute inset-0 bg-gradient-to-br from-accent/[0.08] to-primary-500/[0.05]" />
+                <div className="absolute inset-0 border border-white/[0.05] rounded-xl" />
+                <div className="relative">
+                  <PoolsTable pools={pools} loading={isLoading} />
+                </div>
+              </div>
+            </div>
+
+            {/* Right Column - Activity with glass effect */}
+            <div className="relative rounded-xl overflow-hidden backdrop-blur-xl border border-white/[0.05]">
+              <div className="absolute inset-0 bg-gradient-to-br from-accent/[0.08] to-primary-500/[0.05]" />
+              <div className="absolute inset-0 border border-white/[0.05] rounded-xl" />
+              <div className="relative">
+                <RecentActivity events={events} />
+              </div>
+            </div>
+          </div>
+        </div>
+      </main>
+
+      {/* Dynamic glow effects */}
+      <div className="fixed inset-0 pointer-events-none">
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_top,var(--accent-cyan)/10%,transparent_50%)]" />
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_at_bottom,var(--primary-500)/5%,transparent_50%)]" />
+      </div>
+    </div>
+  );
+}

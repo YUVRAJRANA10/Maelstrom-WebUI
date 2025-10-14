@@ -1,0 +1,229 @@
+"use client";
+
+import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { SwapPreviewModal } from "@/components/swap/swap-preview-modal";
+import { toast } from "sonner";
+import { ArrowDownUp } from "lucide-react";
+import { TokenSelector } from "./token-selector";
+import { Token } from "@/types/token";
+import { BuyRequest, BuyResult } from "@/types/trades";
+import { usePublicClient, useWriteContract } from "wagmi";
+import { ContractClient } from "@/lib/contract-client";
+import { CONTRACT_ADDRESS } from "@/types/contract";
+import { ETH } from "@/types/token";
+import { RowPool } from "@/types/pool";
+import { formatEther, parseEther } from "viem";
+
+interface BuyFormProps {
+  tokens: RowPool[];
+  handleTokenOutChange: (token: Token) => Promise<void>;
+  buyPrice: string;
+  isFetchingRates: boolean;
+}
+
+export function BuyForm({
+  tokens,
+  handleTokenOutChange,
+  buyPrice,
+  isFetchingRates,
+}: BuyFormProps) {
+  const { writeContractAsync } = useWriteContract();
+  const publicClient = usePublicClient();
+  const contractClient = new ContractClient(
+    CONTRACT_ADDRESS,
+    writeContractAsync,
+    publicClient
+  );
+  const [ethAmount, setEthAmount] = useState("");
+  const [tokenAmount, setTokenAmount] = useState("");
+  const [showPreview, setShowPreview] = useState(false);
+  const [isEthInput, setIsEthInput] = useState(true);
+  const [isSwapping, setIsSwapping] = useState(false);
+  const [token, setToken] = useState<Token | undefined>(undefined);
+
+  const handleTokenChange = async (selctedToken: Token) => {
+    setToken(selctedToken);
+    await handleTokenOutChange(selctedToken);
+  };
+
+  const handleInputChange = async (value: string) => {
+    console.log(value);
+    if (!token) return;
+    if (!isEthInput) {
+      setTokenAmount(value);
+      const ethValue = String(
+        Number(value) * Number(formatEther(BigInt(buyPrice)))
+      );
+      setEthAmount(ethValue);
+    } else {
+      setEthAmount(value);
+      if (Number(buyPrice) === Number(0)) {
+        await handleTokenChange(token);
+      }
+      const tokenValue = String(
+        Number(value) / Number(formatEther(BigInt(buyPrice)))
+      );
+      setTokenAmount(tokenValue);
+    }
+  };
+
+  const handleSwapInputType = () => {
+    setIsEthInput(!isEthInput);
+  };
+
+  const handlePreview = () => {
+    if (!ethAmount || !tokenAmount || !token) {
+      toast.success("Invalid Amount: Please enter an amount to buy");
+      return;
+    }
+    setShowPreview(true);
+  };
+
+  const handleConfirmBuy = async () => {
+    if (!token) return;
+    setIsSwapping(true);
+    const request: BuyRequest = {
+      token,
+      amountIn: parseEther(ethAmount).toString(),
+    };
+    const result: BuyResult = await contractClient.buy(request);
+    if (result.success) {
+      toast.success(`Swap Successful! Tx Hash: ${result.txHash}`);
+    } else {
+      toast.error(
+        `Swap Failed!: ${
+          result.error || "An error occurred during the swap process."
+        }`
+      );
+    }
+    setIsSwapping(false);
+    if (result) {
+      setEthAmount("");
+      setTokenAmount("");
+      setShowPreview(false);
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="relative bg-white/[0.02] hover:bg-white/[0.04] transition-all duration-300 rounded-2xl p-5 border border-white/[0.05] shadow-lg backdrop-blur-md group">
+        <div className="flex items-center justify-between mb-3">
+          <span className="text-sm text-white/70 font-medium font-plus-jakarta">
+            You&apos;re {isEthInput ? "paying" : "receiving"}
+          </span>
+          <button
+            onClick={handleSwapInputType}
+            className="p-2 hover:bg-white/10 rounded-xl transition-all duration-200 border border-white/[0.05] bg-white/[0.02]"
+          >
+            <ArrowDownUp className="h-4 w-4 text-accent-cyan" />
+          </button>
+        </div>
+        <div className="relative flex items-center bg-black/10 group-hover:bg-black/20 rounded-xl p-4 transition-all duration-300">
+          <input
+            type="text"
+            inputMode="decimal"
+            placeholder="0"
+            disabled={!token && isSwapping && isFetchingRates}
+            value={isEthInput ? ethAmount : tokenAmount}
+            onChange={(e) => handleInputChange(e.target.value)}
+            className="w-full bg-transparent text-4xl font-medium outline-none placeholder:text-white/20 
+              [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none
+              font-plus-jakarta text-white/90 transition-all duration-300"
+          />
+          {!isEthInput && (
+            <div className="ml-2">
+              <TokenSelector
+                Tokens={tokens}
+                selectedToken={token}
+                onTokenChange={handleTokenChange}
+              />
+            </div>
+          )}
+          {isEthInput && (
+            <Button
+              variant="ghost"
+              className="h-10 px-3 hover:bg-accent/10 font-medium ml-2"
+            >
+              <div className="flex items-center gap-2">
+                <div className="w-6 h-6 rounded-full bg-accent/20 flex items-center justify-center">
+                  <span className="text-sm font-bold text-accent">E</span>
+                </div>
+                <span className="text-base">ETH</span>
+              </div>
+            </Button>
+          )}
+        </div>
+      </div>
+
+      <div className="relative bg-white/[0.02] hover:bg-white/[0.04] transition-all duration-300 rounded-2xl p-5 border border-white/[0.05] shadow-lg backdrop-blur-md group">
+        <div className="flex items-center justify-between mb-3">
+          <span className="text-sm text-white/70 font-medium font-plus-jakarta">
+            You&apos;ll {isEthInput ? "receive" : "pay"}
+          </span>
+        </div>
+        <div className="relative flex items-center bg-black/10 group-hover:bg-black/20 rounded-xl p-4 transition-all duration-300">
+          <input
+            type="text"
+            inputMode="decimal"
+            placeholder="0"
+            value={isEthInput ? tokenAmount : ethAmount}
+            disabled={!token && isSwapping && isFetchingRates}
+            readOnly
+            className="w-full bg-transparent text-4xl font-medium outline-none placeholder:text-white/20 
+                [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none
+                font-plus-jakarta text-white/90 transition-all duration-300"
+          />
+          {isEthInput && (
+            <div className="ml-2">
+              <TokenSelector
+                Tokens={tokens}
+                selectedToken={token}
+                onTokenChange={handleTokenChange}
+              />
+            </div>
+          )}
+          {!isEthInput && (
+            <Button
+              variant="ghost"
+              className="h-10 px-3 hover:bg-accent/10 font-medium ml-2 flex-shrink-0"
+            >
+              <div className="flex items-center gap-2">
+                <div className="w-6 h-6 rounded-full bg-accent/20 flex items-center justify-center">
+                  <span className="text-sm font-bold text-accent">E</span>
+                </div>
+                <span className="text-base">ETH</span>
+              </div>
+            </Button>
+          )}
+        </div>
+      </div>
+
+      <Button
+        onClick={handlePreview}
+        disabled={!ethAmount || !tokenAmount || isSwapping || isFetchingRates}
+        className="w-full h-14 mt-6 bg-gradient-to-r from-accent-cyan to-primary-500 hover:from-accent-cyan/90 hover:to-primary-500/90 
+          text-white font-semibold rounded-xl shadow-lg hover:shadow-accent-cyan/25 transition-all duration-300 
+          disabled:from-gray-600/50 disabled:to-gray-700/50 disabled:cursor-not-allowed disabled:text-white/50
+          border border-white/[0.05] backdrop-blur-sm font-plus-jakarta text-base"
+      >
+        {isSwapping || isFetchingRates ? (
+          <div className="animate-spin rounded-full h-5 w-5 border-2 border-white/20 border-t-white" />
+        ) : (
+          `Preview Buy`
+        )}
+      </Button>
+
+      <SwapPreviewModal
+        isOpen={showPreview}
+        onClose={() => setShowPreview(false)}
+        onConfirm={handleConfirmBuy}
+        tokenIn={ETH}
+        tokenOut={token}
+        amountIn={ethAmount}
+        amountOut={tokenAmount}
+        loading={isSwapping}
+      />
+    </div>
+  );
+}
