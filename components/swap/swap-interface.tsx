@@ -68,6 +68,8 @@ export function SwapInterface() {
   const [validationError, setValidationError] = useState<string>("");
   const [zeroSlippageMode, setZeroSlippageMode] = useState<boolean>(true); // Default to zero slippage mode
   const swapJustHappenedRef = useRef(false);
+  const tokenInSellPriceForRef = useRef<Token | null>(null);
+  const tokenOutBuyPriceForRef = useRef<Token | null>(null);
 
   const calculateOutput = (amount: string, isInput: boolean) => {
     setValidationError("");
@@ -184,6 +186,7 @@ export function SwapInterface() {
       const newExchangeRate = tokenOutBuyPrice / newSellPrice;
 
       setTokenInSellPrice(newSellPrice);
+      tokenInSellPriceForRef.current = token;
       setEthInReserve(reserve?.ethReserve);
 
       setSwapState((prev) => {
@@ -223,6 +226,7 @@ export function SwapInterface() {
       const newExchangeRate = newBuyPrice / tokenInSellPrice;
       setTokenOutReserve(reserve?.tokenReserve);
       setTokenOutBuyPrice(newBuyPrice);
+      tokenOutBuyPriceForRef.current = token;
 
       setSwapState((prev) => {
         const formattedExchangeRate =
@@ -273,10 +277,13 @@ export function SwapInterface() {
     }
   };
 
-  // After swap, recalc the other amount once new prices are available
+  // After swap, recalc the other amount only when both prices match the current token pair
   useEffect(() => {
     if (!swapJustHappenedRef.current) return;
     if (!swapState.tokenIn || !swapState.tokenOut || !tokenInSellPrice || !tokenOutBuyPrice) return;
+    const sellPriceForCurrentIn = tokenInSellPriceForRef.current?.address === swapState.tokenIn?.address;
+    const buyPriceForCurrentOut = tokenOutBuyPriceForRef.current?.address === swapState.tokenOut?.address;
+    if (!sellPriceForCurrentIn || !buyPriceForCurrentOut) return;
     swapJustHappenedRef.current = false;
     if (swapState.amountIn) {
       setSwapState((prev) => ({ ...prev, amountOut: calculateOutput(prev.amountIn, true) }));
